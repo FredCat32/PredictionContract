@@ -8,3 +8,4 @@ npm run test:watch
 
 generate coverage report
 npm run test:coverage
+open coverage_report/index.html
