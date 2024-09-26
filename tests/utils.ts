@@ -23,10 +23,6 @@ const CONTRACT_ID = market.identifier;
 
 export const throwError = () => expect(true).toBe(false);
 
-const getMarket = async (marketId: bigint) => {
-  return mapGet(CONTRACT_ID, market.maps.markets, marketId);
-};
-
 const getUserPosition = async (marketId: bigint, user: string) => {
   try {
     return mapGet(CONTRACT_ID, market.maps.userPositions, {
@@ -42,8 +38,8 @@ const getUserPosition = async (marketId: bigint, user: string) => {
 };
 
 const calculateAndDeductFee = async (marketId: bigint, stxToSwap: bigint) => {
-  const market = await getMarket(marketId);
-  const feePercentage = market!.feeNumerator;
+  const currentMarket = rovOk(market.getMarket(marketId));
+  const feePercentage = currentMarket.feeNumerator;
   const feeAmount = (stxToSwap * feePercentage) / 10000n;
   const netAmount = stxToSwap - feeAmount;
   return {
@@ -229,7 +225,7 @@ export const addLiquiditySuccess = async (
   const userPosition = rov(market.getUserPosition(marketId, user));
   const totalLiquidity = initialMarket.total_lp_tokens;
 
-  console.log({ liquidity, userLp, userPosition, totalLiquidity });
+  // console.log({ liquidity, userLp, userPosition, totalLiquidity });
 
   //   console.log(initialMarket, liquidity);
 
@@ -251,12 +247,12 @@ export const addLiquiditySuccess = async (
   const userUpdatedPosition = rov(market.getUserPosition(marketId, user));
   const userUpdatedLiquidity = rov(market.getUserLp(marketId, deployer));
 
-  console.log({
-    updatedMarket,
-    userUpdatedPosition,
-    userUpdatedLiquidity,
-    addLiquidityReceipt,
-  });
+  // console.log({
+  //   updatedMarket,
+  //   userUpdatedPosition,
+  //   userUpdatedLiquidity,
+  //   addLiquidityReceipt,
+  // });
 
   expect(updatedMarket.total_lp_tokens).toEqual(
     initialMarket.total_lp_tokens + mStxAmount
@@ -281,7 +277,7 @@ export const addLiquidityFailureInsufficientStx = async () => {
     market.addLiquidity(marketId, insufficientLiquidity),
     user_1
   );
-  expect(addLiquidityReceipt.value).toEqual(150n);
+  expect(addLiquidityReceipt.value).toEqual(1n);
 };
 
 export const addLiquidityFailureMarketNotFound = async () => {
@@ -325,16 +321,46 @@ export const addLiquidityFailureInvalidAmount = async () => {
   expect(addLiquidityReceipt.value).toEqual(105n); // Assuming 150 is the error code for invalid amount
 };
 
+export const addLiquidityFailureNotValidActiveMarket = async () => {
+  await createMarketSuccess(1000000n, 5000n, 10n, "Test Market");
+  const marketId = 1n;
+  const liquidity = 0n;
+
+  txOk(market.resolveMarket(marketId, true), deployer);
+
+  const addLiquidityReceipt = txErr(
+    market.addLiquidity(marketId, liquidity),
+    user_1
+  ).value;
+  expect(addLiquidityReceipt).toEqual(market.constants.eRRINVALIDMARKET.value);
+};
+
+export const addLiquidityFailureContractPaused = async () => {
+  await createMarketSuccess(1000000n, 5000n, 10n, "Test Market");
+  const marketId = 1n;
+  const liquidity = 0n;
+  txOk(market.togglePause(), deployer);
+  const addLiquidityReceipt = txErr(
+    market.addLiquidity(marketId, liquidity),
+    user_1
+  ).value;
+  expect(addLiquidityReceipt).toEqual(market.constants.eRRCONTRACTPAUSED.value);
+};
+
 // ############################################################################################
 // REMOVE LIQUIDITY
 // ############################################################################################
 
 export const removeLiquiditySuccess = async (
   marketId: bigint,
+  user: string,
   stxToRemove: bigint
 ) => {
-  const initialMarket = await getMarket(marketId);
-  const userInitialPosition = await getUserPosition(marketId, user_1);
+  const initialMarket = rovOk(market.getMarket(marketId));
+  const userInitialPosition = rov(market.getUserLp(marketId, user));
+  console.log("INITIAL MARKET", initialMarket, userInitialPosition);
+  // console.log("User Position", up);
+  // const userInitialPosition = await getUserPosition(marketId, user_1);
 
   const removeLiquidityReceipt = txOk(
     market.removeLiquidity(marketId, stxToRemove),
@@ -354,7 +380,7 @@ export const removeLiquiditySuccess = async (
     userTotalLiquidity
   );
 
-  const updatedMarket = await getMarket(marketId);
+  const updatedMarket = rov(market.getMarket(marketId)).value;
   const updatedUserPosition = await getUserPosition(marketId, user_1);
 
   //   // Check if the market's total liquidity has decreased
@@ -432,9 +458,9 @@ export const swapStxToYesSuccess = async (
   stxToSwap: bigint
 ) => {
   const initialUserPosition = await getUserPosition(marketId, user_1);
-  const currentMarket = await getMarket(marketId);
-  const yesPool = currentMarket!.yesPool;
-  const totalLiquidity = currentMarket!.total_lp_tokens;
+  const currentMarket = rovOk(market.getMarket(marketId));
+  const yesPool = currentMarket.yesPool;
+  const totalLiquidity = currentMarket.total_lp_tokens;
 
   const swapStxToYesReceipt = txOk(
     market.swapStxToYes(marketId, stxToSwap),
@@ -521,14 +547,14 @@ export const swapStxToNoSuccess = async (
   stxToSwap: bigint
 ) => {
   const initialUserPosition = await getUserPosition(marketId, user_1);
-  const currentMarket = await getMarket(marketId);
+  const currentMarket = rovOk(market.getMarket(marketId));
   const swapStxToNoReceipt = txOk(
     market.swapStxToNo(marketId, stxToSwap),
     user_1
   );
 
-  const noPool = currentMarket!.noPool;
-  const totalLiquidity = currentMarket!.totalLiquidity;
+  const noPool = currentMarket.noPool;
+  const totalLiquidity = currentMarket.total_lp_tokens;
   const userPosition = await getUserPosition(marketId, user_1);
   const netAmount = await getNetAmount(marketId, stxToSwap);
 
@@ -604,8 +630,8 @@ export const swapStxToNoMarketNotFound = async () => {
 
 export const resolveMarketSuccess = async (marketId: bigint) => {
   txOk(market.resolveMarket(marketId, true), deployer);
-  const resolvedMarket = await getMarket(marketId);
-  expect(resolvedMarket?.resolved).toEqual(true);
+  const resolvedMarket = rovOk(market.getMarket(marketId));
+  expect(resolvedMarket.resolved).toEqual(true);
 };
 
 export const resolveMarketUnauthorized = async () => {
@@ -639,7 +665,7 @@ export const swapYesToStxSuccess = async (
   marketId: bigint,
   stxToSwap: bigint
 ) => {
-  const currentMarket = await getMarket(marketId);
+  const currentMarket = rovOk(market.getMarket(marketId));
   const initialUserPosition = await getUserPosition(marketId, user_1);
 
   const swapYesToStxReceipt = txOk(
@@ -647,7 +673,7 @@ export const swapYesToStxSuccess = async (
     user_1
   );
 
-  let porportion = stxToSwap * currentMarket!.totalLiquidity;
+  let porportion = stxToSwap * currentMarket.total_lp_tokens;
 
   porportion = porportion / currentMarket!.yesPool;
 
@@ -692,14 +718,14 @@ export const swapNoToStxSuccess = async (
   marketId: bigint,
   stxToSwap: bigint
 ) => {
-  const currentMarket = await getMarket(marketId);
+  const currentMarket = rovOk(market.getMarket(marketId));
   const initialUserPosition = await getUserPosition(marketId, user_1);
   const swapYesToStxReceipt = txOk(
     market.swapNoToStx(marketId, stxToSwap),
     user_1
   );
 
-  let porportion = stxToSwap * currentMarket!.totalLiquidity;
+  let porportion = stxToSwap * currentMarket.total_lp_tokens;
 
   porportion = porportion / currentMarket!.noPool;
 

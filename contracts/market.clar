@@ -45,10 +45,7 @@
 ;; Helper Functions
 
 (define-private (is-valid-active-market (market-id uint))
-  (match (map-get? markets market-id)
-    market (not (get resolved market))
-    false
-  )
+  (not (get resolved (unwrap! (map-get? markets market-id) false)))
 )
 
 (define-private (is-paused)
@@ -110,7 +107,7 @@
         (no-to-add (/ (* stx-amount no-pool) total-liquidity))
     )
         (asserts! (not (is-paused)) ERR-CONTRACT-PAUSED)
-        (asserts! (not (get resolved market)) ERR-MARKET-RESOLVED)
+        (asserts! (is-valid-active-market market-id) ERR-INVALID-MARKET)
         (asserts! (> stx-amount u0) ERR-INVALID-AMOUNT)
         (map-set markets market-id
             (merge market {
@@ -157,7 +154,7 @@
         (new-no-pool (- no-pool no-to-remove))
     )
         (asserts! (not (is-paused)) ERR-CONTRACT-PAUSED)
-        (asserts! (not (get resolved market)) ERR-MARKET-RESOLVED)
+        (asserts! (is-valid-active-market market-id) ERR-INVALID-MARKET)
         (asserts! (> lp-tokens-to-remove u0) ERR-INVALID-AMOUNT)
         (asserts! (<= lp-tokens-to-remove user-lp-tokens) ERR-INSUFFICIENT-BALANCE)
         (map-set markets market-id 
