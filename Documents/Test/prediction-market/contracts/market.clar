@@ -87,9 +87,11 @@
       (total-lp-tokens initial-liquidity)
     )
     (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
+    ;; This assertion is not necessary since unsigned integers can only be positive
     (asserts! (> initial-liquidity u0) ERR-INVALID-AMOUNT)
     (asserts! (> (len market-title) u0) ERR-INVALID-TITLE)
     (asserts! (and (>= yes-percentage u1) (<= yes-percentage u99)) ERR-INVALID-ODDS)
+    ;; This assertion is also not necessary, since the initial liquidity and yes percentage are already checked 
     (asserts! (and (> lp-yes-pool u0) (> lp-no-pool u0)) ERR-INSUFFICIENT-LIQUIDITY)
     (asserts! (and (>= fee-numerator u0) (<= fee-numerator u1000)) ERR-INVALID-FEE)
 
